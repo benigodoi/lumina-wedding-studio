@@ -1,0 +1,6 @@
+{
+  "name": "Lumina Wedding Studio",
+  "description": "Premium workflow manager for Lumina Wedding Studio, tracking scheduled events, calendar timelines, package dynamic pricing, and automated AI client communication summaries.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
