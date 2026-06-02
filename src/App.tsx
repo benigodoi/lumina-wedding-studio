@@ -6,11 +6,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Home, Calendar as CalendarIcon, Award, Settings as SettingsIcon, 
-  Bell, Plus, Heart, Sparkles, Check, ChevronRight, Sun, Moon
+  Bell, Plus, Heart, Sparkles, Check, ChevronRight, Sun, Moon, LogOut
 } from 'lucide-react';
+import type { User, Session } from '@supabase/supabase-js';
 import { Wedding, GoogleCalendarEvent } from './types';
 import { INITIAL_WEDDINGS, INITIAL_GOOGLE_EVENTS } from './data';
+import { supabase } from './lib/supabase';
 
+import AuthView from './components/AuthView';
 import DashboardView from './components/DashboardView';
 import CalendarView from './components/CalendarView';
 import WeddingsListView from './components/WeddingsListView';
@@ -19,6 +22,7 @@ import WeddingBoardModal from './components/WeddingBoardModal';
 import SettingsView from './components/SettingsView';
 
 export default function App() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined); // undefined = loading
   const [selectedTab, setSelectedTab] = useState<'home' | 'calendar' | 'weddings' | 'settings' | 'new-wedding'>('home');
   const [weddings, setWeddings] = useState<Wedding[]>([]);
   const [selectedWedding, setSelectedWedding] = useState<Wedding | null>(null);
@@ -29,9 +33,12 @@ export default function App() {
   // Google Calendar Shared States
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [syncActive, setSyncActive] = useState(true);
-  const [syncEmail, setSyncEmail] = useState('lumina.studio@gmail.com');
+  const [syncEmail, setSyncEmail] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(
+    () => localStorage.getItem('lumina_google_token')
+  );
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
       const stored = localStorage.getItem('lumina_dark_mode');
@@ -40,137 +47,225 @@ export default function App() {
     } catch { return false; }
   });
 
-  // Initialize data on mount from localStorage or defaults
+  // Auth: listen for session changes
   useEffect(() => {
-    const storedWeddings = localStorage.getItem('lumina_weddings');
-    const storedName = localStorage.getItem('lumina_studio_name');
-    const storedGoogleEvents = localStorage.getItem('lumina_google_events');
-    const storedSyncActive = localStorage.getItem('lumina_sync_active');
-    const storedSyncEmail = localStorage.getItem('lumina_sync_email');
-    
-    if (storedWeddings) {
-      try {
-        setWeddings(JSON.parse(storedWeddings));
-      } catch (e) {
-        setWeddings(INITIAL_WEDDINGS);
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      // provider_token is available right after OAuth redirect
+      if (data.session?.provider_token) {
+        setGoogleAccessToken(data.session.provider_token);
+        localStorage.setItem('lumina_google_token', data.session.provider_token);
       }
-    } else {
-      setWeddings(INITIAL_WEDDINGS);
-    }
-
-    if (storedGoogleEvents) {
-      try {
-        setGoogleEvents(JSON.parse(storedGoogleEvents));
-      } catch (e) {
-        setGoogleEvents(INITIAL_GOOGLE_EVENTS);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.provider_token) {
+        setGoogleAccessToken(session.provider_token);
+        localStorage.setItem('lumina_google_token', session.provider_token);
       }
-    } else {
-      setGoogleEvents(INITIAL_GOOGLE_EVENTS);
-    }
-
-    if (storedSyncActive !== null) {
-      setSyncActive(storedSyncActive === 'true');
-    }
-
-    if (storedSyncEmail) {
-      setSyncEmail(storedSyncEmail);
-    }
-
-    if (storedName) {
-      setStudioName(storedName);
-    }
+    });
+    return () => subscription.unsubscribe();
   }, []);
+
+  // Load user data from Supabase when session is available
+  useEffect(() => {
+    if (!session) return;
+
+    const userId = session.user.id;
+    // Pre-fill syncEmail from Google OAuth provider data
+    const googleIdentity = session.user.identities?.find(i => i.provider === 'google');
+    const email = session.user.email ?? '';
+    setSyncEmail(email);
+
+    // Load weddings
+    supabase
+      .from('weddings')
+      .select('*')
+      .eq('user_id', userId)
+      .then(({ data, error }) => {
+        if (error) { console.error('weddings fetch:', error); return; }
+        setWeddings(data && data.length > 0 ? data as Wedding[] : INITIAL_WEDDINGS);
+      });
+
+    // Load google events
+    supabase
+      .from('google_events')
+      .select('*')
+      .eq('user_id', userId)
+      .then(({ data, error }) => {
+        if (error) { console.error('google_events fetch:', error); return; }
+        setGoogleEvents(data && data.length > 0 ? data as GoogleCalendarEvent[] : INITIAL_GOOGLE_EVENTS);
+      });
+
+    // Load preferences
+    supabase
+      .from('user_preferences')
+      .select('studio_name, sync_active')
+      .eq('user_id', userId)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          if (data.studio_name) setStudioName(data.studio_name);
+          if (data.sync_active != null) setSyncActive(data.sync_active);
+        }
+      });
+  }, [session]);
 
   // Keep .dark class on <html> in sync with state
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
   }, [isDarkMode]);
 
-  // Sync state helpers
-  const syncToLocalStorage = (updatedList: Wedding[]) => {
+  const userId = session?.user.id;
+
+  // Supabase write helpers
+  const syncToSupabase = async (updatedList: Wedding[]) => {
     setWeddings(updatedList);
-    localStorage.setItem('lumina_weddings', JSON.stringify(updatedList));
+    if (!userId) return;
+    // Upsert full list — simple approach for now
+    await supabase.from('weddings').upsert(
+      updatedList.map(w => ({ ...w, user_id: userId })),
+      { onConflict: 'id' }
+    );
   };
 
-  const syncGoogleEventsToLocalStorage = (updatedEvents: GoogleCalendarEvent[]) => {
+  const syncGoogleEventsToSupabase = async (updatedEvents: GoogleCalendarEvent[]) => {
     setGoogleEvents(updatedEvents);
-    localStorage.setItem('lumina_google_events', JSON.stringify(updatedEvents));
+    if (!userId) return;
+    await supabase.from('google_events').upsert(
+      updatedEvents.map(e => ({ ...e, user_id: userId })),
+      { onConflict: 'id' }
+    );
+  };
+
+  const upsertPreference = async (patch: Record<string, unknown>) => {
+    if (!userId) return;
+    await supabase.from('user_preferences').upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' });
   };
 
   const handleUpdateStudioName = (name: string) => {
     setStudioName(name);
-    localStorage.setItem('lumina_studio_name', name);
+    upsertPreference({ studio_name: name });
   };
 
   const handleToggleSyncActive = (active: boolean) => {
     setSyncActive(active);
-    localStorage.setItem('lumina_sync_active', String(active));
+    upsertPreference({ sync_active: active });
   };
 
   const handleUpdateSyncEmail = (email: string) => {
     setSyncEmail(email);
-    localStorage.setItem('lumina_sync_email', email);
   };
 
   const handleToggleDarkMode = (dark: boolean) => {
     setIsDarkMode(dark);
-    localStorage.setItem('lumina_dark_mode', String(dark));
+    localStorage.setItem('lumina_dark_mode', String(dark)); // preference stays local
+  };
+
+  const handleSignOut = async () => {
+    localStorage.removeItem('lumina_google_token');
+    setGoogleAccessToken(null);
+    await supabase.auth.signOut();
   };
 
   const handleAddGoogleEvent = (event: GoogleCalendarEvent) => {
     const updated = [event, ...googleEvents];
-    syncGoogleEventsToLocalStorage(updated);
+    syncGoogleEventsToSupabase(updated);
   };
 
   const handleDeleteGoogleEvent = (id: string) => {
     const updated = googleEvents.filter(e => e.id !== id);
-    syncGoogleEventsToLocalStorage(updated);
+    syncGoogleEventsToSupabase(updated);
+    if (userId) supabase.from('google_events').delete().eq('id', id).eq('user_id', userId);
   };
 
-  const handleTriggerSyncRefresh = () => {
+  const handleTriggerSyncRefresh = async () => {
+    if (!googleAccessToken) {
+      // Token lost after page refresh — need user to re-authenticate
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          scopes: 'https://www.googleapis.com/auth/calendar.readonly',
+          redirectTo: window.location.origin,
+          queryParams: { prompt: 'consent', access_type: 'offline' },
+        },
+      });
+      return;
+    }
+
     setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      if (googleEvents.length === 0) {
-        syncGoogleEventsToLocalStorage(INITIAL_GOOGLE_EVENTS);
+    try {
+      // Fetch next 50 events from the user's primary Google Calendar
+      const now = new Date().toISOString();
+      const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=50&orderBy=startTime&singleEvents=true&timeMin=${encodeURIComponent(now)}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+      });
+
+      if (res.status === 401) {
+        // Token expired — clear it and ask user to reconnect
+        localStorage.removeItem('lumina_google_token');
+        setGoogleAccessToken(null);
+        setIsSyncing(false);
+        return;
       }
+
+      if (!res.ok) throw new Error(`Calendar API error: ${res.status}`);
+
+      const data = await res.json();
+      const fetched: GoogleCalendarEvent[] = (data.items ?? []).map((item: any) => ({
+        id: item.id,
+        title: item.summary ?? '(No title)',
+        date: (item.start?.date ?? item.start?.dateTime ?? '').slice(0, 10),
+        time: item.start?.dateTime
+          ? new Date(item.start.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'All Day',
+        duration: item.end?.dateTime && item.start?.dateTime
+          ? `${Math.round((new Date(item.end.dateTime).getTime() - new Date(item.start.dateTime).getTime()) / 60000)} min`
+          : 'All Day',
+        description: item.description ?? '',
+        calendarName: 'Primary',
+      }));
+
+      await syncGoogleEventsToSupabase(fetched);
       setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    }, 1200);
+    } catch (err) {
+      console.error('Calendar sync failed:', err);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleAddWedding = (wedding: Wedding) => {
     const updated = [wedding, ...weddings];
-    syncToLocalStorage(updated);
+    syncToSupabase(updated);
     setSelectedTab('weddings');
     setPreselectedFormDate('');
-    
-    // Show instant browser notification visual follow-up
     setShowNotificationAlert(true);
     setTimeout(() => setShowNotificationAlert(false), 4500);
   };
 
   const handleDeleteWedding = (id: string) => {
     const updated = weddings.filter((w) => w.id !== id);
-    syncToLocalStorage(updated);
+    syncToSupabase(updated);
+    if (userId) supabase.from('weddings').delete().eq('id', id).eq('user_id', userId);
   };
 
   const handleUpdateWedding = (updatedWedding: Wedding) => {
     const updated = weddings.map((w) => w.id === updatedWedding.id ? updatedWedding : w);
-    syncToLocalStorage(updated);
-    setSelectedWedding(updatedWedding); // Update currently viewed modal board as well
+    syncToSupabase(updated);
+    setSelectedWedding(updatedWedding);
   };
 
   const handleResetData = () => {
-    localStorage.removeItem('lumina_weddings');
-    localStorage.removeItem('lumina_studio_name');
-    localStorage.removeItem('lumina_google_events');
-    localStorage.removeItem('lumina_sync_active');
-    localStorage.removeItem('lumina_sync_email');
+    if (!userId) return;
+    supabase.from('weddings').delete().eq('user_id', userId);
+    supabase.from('google_events').delete().eq('user_id', userId);
+    supabase.from('user_preferences').delete().eq('user_id', userId);
     localStorage.removeItem('lumina_dark_mode');
     setWeddings(INITIAL_WEDDINGS);
     setGoogleEvents(INITIAL_GOOGLE_EVENTS);
     setSyncActive(true);
-    setSyncEmail('lumina.studio@gmail.com');
     setStudioName('Lumina Wedding Studio');
   };
 
@@ -178,6 +273,16 @@ export default function App() {
     setPreselectedFormDate(date);
     setSelectedTab('new-wedding');
   };
+
+  // Auth guard
+  if (session === undefined) {
+    // Still loading session — show nothing to avoid flash
+    return <div className="min-h-screen bg-slate-50 dark:bg-zinc-950" />;
+  }
+
+  if (session === null) {
+    return <AuthView />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 font-sans text-on-background dark:text-zinc-100 flex flex-col selection:bg-primary/20">
@@ -187,17 +292,23 @@ export default function App() {
         <div className="flex items-center justify-between px-6 h-full w-full max-w-[1440px] mx-auto">
           
           <div className="flex items-center gap-3">
-            {/* Soft Studio Lighting Photographer Portrait avatar */}
+            {/* User avatar from Google OAuth */}
             <div 
               onClick={() => setSelectedTab('settings')}
               className="w-10 h-10 rounded-full border border-zinc-200 dark:border-zinc-700 overflow-hidden transition-all duration-200 active:scale-95 cursor-pointer bg-zinc-50 shrink-0"
             >
-              <img 
-                alt="Photographer Profile Avatar" 
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaO7vGgTU5q58OdP9j8uUCA4ROi0S1fRp_fPrz_gKfLA4ixUGTozlM6aXMkqFRx5dPgcPqWHvJfWztY6bkHxJ9cH22euMPHLpm12i5KpqoF6CZ47KC0SIls1DviIu22djTnevENflfB7eF7U25XVaf3kOCs5EVmph6Y2TUVUQNWhjw-3jkWY5TvamuWIqhsfpDUdN3NZHiEifXK5A88Lzw5ieNIn2OfxjneoE2rJRPLJVPHragKxNBpByhqXyKCKplC65vWKC5Qnjq" 
-              />
+              {session.user.user_metadata?.avatar_url ? (
+                <img 
+                  alt="Profile"
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                  src={session.user.user_metadata.avatar_url}
+                />
+              ) : (
+                <div className="w-full h-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
+                  {(session.user.email ?? 'U')[0].toUpperCase()}
+                </div>
+              )}
             </div>
             <h1 
               onClick={() => setSelectedTab('home')}
@@ -214,6 +325,14 @@ export default function App() {
               aria-label="Toggle dark mode"
             >
               {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="p-2 rounded-full border border-zinc-150 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-850 hover:text-red-500 dark:hover:text-red-400 active:scale-95 transition-all cursor-pointer"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut className="w-5 h-5" />
             </button>
             <button 
               onClick={() => {
