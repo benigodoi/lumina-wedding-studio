@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { Heart, Sparkles, AlertCircle, Loader } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
+
+const isNative = Capacitor.isNativePlatform();
 
 export default function AuthView() {
   const [isLoading, setIsLoading] = useState(false);
@@ -9,19 +13,34 @@ export default function AuthView() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithOAuth({
+
+    const redirectTo = isNative
+      ? 'com.luminaweddingstudio.app://login-callback'
+      : window.location.origin;
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        redirectTo: window.location.origin,
+        redirectTo,
         queryParams: { access_type: 'offline', prompt: 'consent' },
+        skipBrowserRedirect: isNative, // we handle the redirect ourselves on native
       },
     });
+
     if (error) {
       setError(error.message);
       setIsLoading(false);
+      return;
     }
-    // On success, browser redirects — no need to setIsLoading(false)
+
+    if (isNative && data.url) {
+      // Open Google sign-in in a real Chrome Custom Tab (not WebView)
+      await Browser.open({ url: data.url, windowName: '_self' });
+      setIsLoading(false);
+      return;
+    }
+    // On web, Supabase handles the redirect automatically
   };
 
   return (

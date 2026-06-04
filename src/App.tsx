@@ -8,7 +8,10 @@ import {
   Home, Calendar as CalendarIcon, Award, Settings as SettingsIcon, 
   Bell, Plus, Heart, Sparkles, Check, ChevronRight, Sun, Moon, LogOut
 } from 'lucide-react';
-import type { User, Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { Wedding, GoogleCalendarEvent } from './types';
 import { INITIAL_WEDDINGS, INITIAL_GOOGLE_EVENTS } from './data';
 import { supabase } from './lib/supabase';
@@ -51,7 +54,6 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      // provider_token is available right after OAuth redirect
       if (data.session?.provider_token) {
         setGoogleAccessToken(data.session.provider_token);
         localStorage.setItem('lumina_google_token', data.session.provider_token);
@@ -65,6 +67,53 @@ export default function App() {
       }
     });
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Native deep link handler — must live here (top level) so it's always registered
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const listenerPromise = CapApp.addListener('appUrlOpen', async ({ url }) => {
+      console.log('[Auth] appUrlOpen received:', url);
+      if (!url.includes('login-callback')) return;
+      try {
+        // Supabase returns tokens in the hash fragment (implicit flow)
+        const hash = url.includes('#') ? url.split('#')[1] : url.split('?')[1] ?? '';
+        const params = new URLSearchParams(hash);
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+        const provider_token = params.get('provider_token');
+
+        if (access_token && refresh_token) {
+          const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
+          if (error) {
+            console.error('[Auth] setSession error:', error.message);
+          } else {
+            console.log('[Auth] Session set, user:', data.session?.user?.email);
+            const token = provider_token ?? data.session?.provider_token;
+            if (token) {
+              setGoogleAccessToken(token);
+              localStorage.setItem('lumina_google_token', token);
+            }
+          }
+        } else {
+          // Fallback: PKCE code flow
+          const code = params.get('code');
+          if (code) {
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) console.error('[Auth] exchangeCodeForSession error:', error.message);
+            else if (data.session?.provider_token) {
+              setGoogleAccessToken(data.session.provider_token);
+              localStorage.setItem('lumina_google_token', data.session.provider_token);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Auth] Deep link handling error:', e);
+      } finally {
+        await Browser.close().catch(() => {});
+      }
+    });
+    return () => { listenerPromise.then(l => l.remove()); };
   }, []);
 
   // Load user data from Supabase when session is available
