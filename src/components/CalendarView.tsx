@@ -157,7 +157,7 @@ export default function CalendarView({
               <button 
                 type="button"
                 onClick={handlePrevMonth}
-                className="p-2 border border-zinc-150 dark:border-zinc-800 rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-850 cursor-pointer text-zinc-650 transition-colors"
+                className="p-2 border border-zinc-200 dark:border-zinc-800 rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 transition-colors"
                 title="Previous Month"
                 id="cal-prev-month-button"
               >
@@ -167,7 +167,7 @@ export default function CalendarView({
               <button 
                 type="button"
                 onClick={handleNextMonth}
-                className="p-2 border border-zinc-150 dark:border-zinc-800 rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-850 cursor-pointer text-zinc-650 transition-colors"
+                className="p-2 border border-zinc-200 dark:border-zinc-800 rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 transition-colors"
                 title="Next Month"
                 id="cal-next-month-button"
               >
@@ -177,7 +177,7 @@ export default function CalendarView({
           </div>
 
           {/* Week Day Labels */}
-          <div className="grid grid-cols-7 mb-2 border-b border-zinc-100 dark:border-zinc-805">
+          <div className="grid grid-cols-7 mb-2 border-b border-zinc-100 dark:border-zinc-800">
             {dayHeaders.map((hdr) => (
               <div key={hdr} className="text-center font-headline text-[10px] sm:text-xs font-black text-on-surface-variant dark:text-zinc-400 py-2.5 tracking-wider">
                 {hdr}
@@ -213,12 +213,12 @@ export default function CalendarView({
                 <div 
                   key={`day-${dayNum}`}
                   onClick={() => handleSelectDayForPrepopulation(dayDateStr)}
-                  className={`h-28 border rounded-xl p-2 flex flex-col justify-between hover:border-primary/50 cursor-pointer transition-all relative ${
+                  className={`group h-28 border rounded-xl p-2 flex flex-col justify-between hover:border-primary/50 cursor-pointer transition-all relative ${
                     isFocused 
                       ? 'ring-2 ring-primary border-primary bg-zinc-50/50 dark:bg-zinc-800/10' 
                       : hasWedding 
                         ? 'border-primary/30 bg-primary/[0.02] dark:bg-primary/[0.01]'
-                        : 'border-zinc-150 dark:border-zinc-800 bg-white dark:bg-zinc-900'
+                        : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900'
                   }`}
                   id={`day-cell-${dayDateStr}`}
                 >
@@ -353,8 +353,8 @@ export default function CalendarView({
                 placeholder="e.g. your-studio@gmail.com"
                 id="google-sync-email-input"
               />
-              <span className="text-[9px] uppercase font-bold text-primary tracking-widest flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> VERIFIED
+              <span className={`text-[9px] uppercase font-bold tracking-widest flex items-center gap-1 ${syncActive ? 'text-primary' : 'text-zinc-400'}`}>
+                <ShieldCheck className="w-3.5 h-3.5" /> {syncActive ? 'LINKED' : 'PAUSED'}
               </span>
             </div>
           </div>
@@ -401,7 +401,7 @@ export default function CalendarView({
                 placeholder="e.g. Private Portrait Session"
                 value={newBlockTitle}
                 onChange={(e) => setNewBlockTitle(e.target.value)}
-                className="bg-zinc-50 dark:bg-zinc-850 border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none text-on-surface"
+                className="bg-zinc-50 dark:bg-zinc-800 border border-outline-variant dark:border-zinc-700 focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none text-on-surface dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
                 id="block-title"
               />
             </div>
@@ -416,7 +416,7 @@ export default function CalendarView({
                   required
                   value={newBlockDate}
                   onChange={(e) => setNewBlockDate(e.target.value)}
-                  className="bg-zinc-50 dark:bg-zinc-850 border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3 py-2.5 text-xs font-bold text-center text-on-surface"
+                  className="bg-zinc-50 dark:bg-zinc-800 border border-outline-variant dark:border-zinc-700 focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3 py-2.5 text-xs font-bold text-center text-on-surface dark:text-zinc-100 dark:[color-scheme:dark]"
                   id="block-date"
                 />
               </div>
@@ -429,7 +429,7 @@ export default function CalendarView({
                   type="time"
                   value={newBlockTime}
                   onChange={(e) => setNewBlockTime(e.target.value)}
-                  className="bg-zinc-50 dark:bg-zinc-850 border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3 py-2.5 text-xs font-bold text-center text-on-surface"
+                  className="bg-zinc-50 dark:bg-zinc-800 border border-outline-variant dark:border-zinc-700 focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3 py-2.5 text-xs font-bold text-center text-on-surface dark:text-zinc-100 dark:[color-scheme:dark]"
                   id="block-time"
                 />
               </div>
@@ -442,7 +442,7 @@ export default function CalendarView({
               <select
                 value={newBlockCategory}
                 onChange={(e) => setNewBlockCategory(e.target.value)}
-                className="bg-zinc-50 dark:bg-zinc-850 border border-outline-variant text-xs font-bold px-3 py-2.5 rounded-xl text-on-surface focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer focus:border-primary"
+                className="bg-zinc-50 dark:bg-zinc-800 border border-outline-variant dark:border-zinc-700 text-xs font-bold px-3 py-2.5 rounded-xl text-on-surface dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer focus:border-primary"
                 id="block-category"
               >
                 <option value="Primary Studio Feed">Primary Studio Feed 👤</option>
@@ -454,7 +454,7 @@ export default function CalendarView({
 
             <button
               type="submit"
-              className="w-full py-2 bg-zinc-900 hover:bg-zinc-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+              className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
               id="submit-blockout-button"
             >
               <Plus className="w-4 h-4" /> Block Out Date on Google
@@ -465,7 +465,7 @@ export default function CalendarView({
         {/* Current Active Synced Google Blocks List */}
         <section className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="font-headline text-xs font-bold text-on-surface-variant dark:text-zinc-350 uppercase tracking-wider">
+            <h4 className="font-headline text-xs font-bold text-on-surface-variant dark:text-zinc-400 uppercase tracking-wider">
               Google Blocks This Feed ({googleEvents.length})
             </h4>
             <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full uppercase">
@@ -475,7 +475,7 @@ export default function CalendarView({
 
           <div className="space-y-2 max-h-[190px] overflow-y-auto no-scrollbar">
             {googleEvents.length === 0 ? (
-              <p className="text-xs text-zinc-450 italic py-4 text-center">No synchronized external blocking slots found.</p>
+              <p className="text-xs text-zinc-400 italic py-4 text-center">No synchronized external blocking slots found.</p>
             ) : (
               googleEvents.map((event) => (
                 <div 
@@ -509,7 +509,7 @@ export default function CalendarView({
       {/* Focus Google Event Detail Modal Overlay */}
       {focusedGoogleEvent && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-6 rounded-2xl max-w-sm w-full shadow-2xl relative space-y-4">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 rounded-2xl max-w-sm w-full shadow-2xl relative space-y-4">
             
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
@@ -517,13 +517,13 @@ export default function CalendarView({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[10px] uppercase font-black text-amber-600 tracking-wider">Google Synced Event</p>
-                <h3 className="font-headline font-extrabold text-lg text-on-surface dark:text-zinc-105 leading-tight truncate">
+                <h3 className="font-headline font-extrabold text-lg text-on-surface dark:text-zinc-100 leading-tight truncate">
                   {focusedGoogleEvent.title}
                 </h3>
               </div>
             </div>
 
-            <div className="space-y-2.5 text-xs text-on-surface-variant dark:text-zinc-300 bg-zinc-55 dark:bg-zinc-800/20 p-4 rounded-xl border border-zinc-100 dark:border-zinc-800">
+            <div className="space-y-2.5 text-xs text-on-surface-variant dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-800/20 p-4 rounded-xl border border-zinc-100 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-amber-500" />
                 <span className="font-bold">Date: {focusedGoogleEvent.date}</span>
@@ -571,7 +571,7 @@ export default function CalendarView({
               <button
                 type="button"
                 onClick={() => setFocusedGoogleEvent(null)}
-                className="py-2 px-5 bg-zinc-900 hover:bg-zinc-850 text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 font-bold rounded-xl text-xs transition-colors"
+                className="py-2 px-5 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 font-bold rounded-xl text-xs transition-colors"
               >
                 Acknowledged
               </button>

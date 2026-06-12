@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Home, Calendar as CalendarIcon, Award, Settings as SettingsIcon, 
-  Bell, Plus, Heart, Sparkles, Check, ChevronRight, Sun, Moon, LogOut
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Home, Calendar as CalendarIcon, Award, Settings as SettingsIcon,
+  Bell, Plus, Heart, Check, Sun, Moon, LogOut, AlertCircle, Info
 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
@@ -15,6 +15,13 @@ import { Browser } from '@capacitor/browser';
 import { Wedding, GoogleCalendarEvent } from './types';
 import { INITIAL_WEDDINGS, INITIAL_GOOGLE_EVENTS } from './data';
 import { supabase } from './lib/supabase';
+import {
+  signInWithGoogle, getStoredGoogleToken, storeGoogleTokens, clearGoogleTokens, tryRefreshGoogleToken
+} from './lib/googleAuth';
+import {
+  GoogleAuthError, GoogleEventInput, isLocalOnlyEvent,
+  listGoogleCalendarEvents, createGoogleCalendarEvent, updateGoogleCalendarEvent, deleteGoogleCalendarEvent
+} from './lib/googleCalendar';
 
 import AuthView from './components/AuthView';
 import DashboardView from './components/DashboardView';
@@ -24,6 +31,29 @@ import NewWeddingFormView from './components/NewWeddingFormView';
 import WeddingBoardModal from './components/WeddingBoardModal';
 import SettingsView from './components/SettingsView';
 
+// Demo data gets fresh per-user ids so two accounts never collide on the same primary key.
+// Demo google events use the local-only prefix so sync reconciliation leaves them alone.
+const buildDemoWeddings = (): Wedding[] =>
+  INITIAL_WEDDINGS.map(w => ({ ...w, id: `w-${crypto.randomUUID()}` }));
+const buildDemoGoogleEvents = (): GoogleCalendarEvent[] =>
+  INITIAL_GOOGLE_EVENTS.map(g => ({ ...g, id: `g-custom-${crypto.randomUUID()}` }));
+
+// How a wedding booking appears on the user's Google Calendar
+const weddingToEventInput = (w: Wedding): GoogleEventInput => ({
+  title: `💍 Wedding — ${w.brideName} & ${w.groomName}`,
+  date: w.date,
+  time: w.time || '12:00',
+  durationHours: 8,
+  location: w.location,
+  description: `Lumina Studio booking • Services: ${w.services.join(', ')}${w.notes ? `\nNotes: ${w.notes}` : ''}`,
+});
+
+interface Toast {
+  title: string;
+  message: string;
+  tone: 'success' | 'error' | 'info';
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined); // undefined = loading
   const [selectedTab, setSelectedTab] = useState<'home' | 'calendar' | 'weddings' | 'settings' | 'new-wedding'>('home');
@@ -31,17 +61,24 @@ export default function App() {
   const [selectedWedding, setSelectedWedding] = useState<Wedding | null>(null);
   const [studioName, setStudioName] = useState('Lumina Wedding Studio');
   const [preselectedFormDate, setPreselectedFormDate] = useState('');
-  const [showNotificationAlert, setShowNotificationAlert] = useState(false);
+
+  // Lightweight toast notifications (replaces blocking alert() calls)
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+  const showToast = (next: Toast) => {
+    setToast(next);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 4500);
+  };
 
   // Google Calendar Shared States
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [syncActive, setSyncActive] = useState(true);
   const [syncEmail, setSyncEmail] = useState('');
+  const syncEmailTimer = useRef<number | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(
-    () => localStorage.getItem('lumina_google_token')
-  );
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(getStoredGoogleToken);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
       const stored = localStorage.getItem('lumina_dark_mode');
@@ -56,14 +93,14 @@ export default function App() {
       setSession(data.session);
       if (data.session?.provider_token) {
         setGoogleAccessToken(data.session.provider_token);
-        localStorage.setItem('lumina_google_token', data.session.provider_token);
+        storeGoogleTokens(data.session.provider_token, data.session.provider_refresh_token);
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.provider_token) {
         setGoogleAccessToken(session.provider_token);
-        localStorage.setItem('lumina_google_token', session.provider_token);
+        storeGoogleTokens(session.provider_token, session.provider_refresh_token);
       }
     });
     return () => subscription.unsubscribe();
@@ -82,6 +119,7 @@ export default function App() {
         const access_token = params.get('access_token');
         const refresh_token = params.get('refresh_token');
         const provider_token = params.get('provider_token');
+        const provider_refresh_token = params.get('provider_refresh_token');
 
         if (access_token && refresh_token) {
           const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
@@ -92,7 +130,7 @@ export default function App() {
             const token = provider_token ?? data.session?.provider_token;
             if (token) {
               setGoogleAccessToken(token);
-              localStorage.setItem('lumina_google_token', token);
+              storeGoogleTokens(token, provider_refresh_token ?? data.session?.provider_refresh_token);
             }
           }
         } else {
@@ -103,7 +141,7 @@ export default function App() {
             if (error) console.error('[Auth] exchangeCodeForSession error:', error.message);
             else if (data.session?.provider_token) {
               setGoogleAccessToken(data.session.provider_token);
-              localStorage.setItem('lumina_google_token', data.session.provider_token);
+              storeGoogleTokens(data.session.provider_token, data.session.provider_refresh_token);
             }
           }
         }
@@ -121,43 +159,59 @@ export default function App() {
     if (!session) return;
 
     const userId = session.user.id;
-    // Pre-fill syncEmail from Google OAuth provider data
-    const googleIdentity = session.user.identities?.find(i => i.provider === 'google');
-    const email = session.user.email ?? '';
-    setSyncEmail(email);
+    setSyncEmail(session.user.email ?? '');
 
-    // Load weddings
-    supabase
-      .from('weddings')
-      .select('*')
-      .eq('user_id', userId)
-      .then(({ data, error }) => {
-        if (error) { console.error('weddings fetch:', error); return; }
-        setWeddings(data && data.length > 0 ? data as Wedding[] : INITIAL_WEDDINGS);
-      });
+    const loadData = async () => {
+      const [weddingsRes, eventsRes] = await Promise.all([
+        supabase.from('weddings').select('*').eq('user_id', userId),
+        supabase.from('google_events').select('*').eq('user_id', userId),
+      ]);
 
-    // Load google events
-    supabase
-      .from('google_events')
-      .select('*')
-      .eq('user_id', userId)
-      .then(({ data, error }) => {
-        if (error) { console.error('google_events fetch:', error); return; }
-        setGoogleEvents(data && data.length > 0 ? data as GoogleCalendarEvent[] : INITIAL_GOOGLE_EVENTS);
-      });
+      if (weddingsRes.error) console.error('weddings fetch:', weddingsRes.error);
+      if (eventsRes.error) console.error('google_events fetch:', eventsRes.error);
 
-    // Load preferences
-    supabase
-      .from('user_preferences')
-      .select('studio_name, sync_active')
-      .eq('user_id', userId)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          if (data.studio_name) setStudioName(data.studio_name);
-          if (data.sync_active != null) setSyncActive(data.sync_active);
-        }
-      });
+      const dbWeddings = (weddingsRes.data ?? []) as Wedding[];
+      const dbEvents = (eventsRes.data ?? []) as GoogleCalendarEvent[];
+
+      // Seed demo data into the DB exactly once per account (first sign-in on this
+      // device with an empty account). An emptied account stays empty afterwards.
+      const seededKey = `lumina_seeded_${userId}`;
+      const isFirstLogin = !weddingsRes.error && !eventsRes.error
+        && dbWeddings.length === 0 && dbEvents.length === 0
+        && !localStorage.getItem(seededKey);
+
+      if (isFirstLogin) {
+        const demoWeddings = buildDemoWeddings();
+        const demoEvents = buildDemoGoogleEvents();
+        const [wErr, gErr] = await Promise.all([
+          supabase.from('weddings').insert(demoWeddings.map(w => ({ ...w, user_id: userId }))),
+          supabase.from('google_events').insert(demoEvents.map(e => ({ ...e, user_id: userId }))),
+        ]);
+        if (wErr.error) console.error('demo weddings seed:', wErr.error);
+        if (gErr.error) console.error('demo google_events seed:', gErr.error);
+        setWeddings(demoWeddings);
+        setGoogleEvents(demoEvents);
+      } else {
+        setWeddings(dbWeddings);
+        setGoogleEvents(dbEvents);
+      }
+      localStorage.setItem(seededKey, '1');
+
+      // select('*') so an optional column (e.g. sync_email) missing from the
+      // schema doesn't break loading the rest of the preferences
+      const { data: prefs } = await supabase
+        .from('user_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      if (prefs) {
+        if (prefs.studio_name) setStudioName(prefs.studio_name);
+        if (prefs.sync_active != null) setSyncActive(prefs.sync_active);
+        if (prefs.sync_email) setSyncEmail(prefs.sync_email);
+      }
+    };
+
+    loadData().catch(err => console.error('initial data load failed:', err));
   }, [session]);
 
   // Keep .dark class on <html> in sync with state
@@ -172,24 +226,29 @@ export default function App() {
     setWeddings(updatedList);
     if (!userId) return;
     // Upsert full list — simple approach for now
-    await supabase.from('weddings').upsert(
+    const { error } = await supabase.from('weddings').upsert(
       updatedList.map(w => ({ ...w, user_id: userId })),
       { onConflict: 'id' }
     );
+    if (error) console.error('weddings upsert failed:', error);
   };
 
   const syncGoogleEventsToSupabase = async (updatedEvents: GoogleCalendarEvent[]) => {
     setGoogleEvents(updatedEvents);
     if (!userId) return;
-    await supabase.from('google_events').upsert(
+    const { error } = await supabase.from('google_events').upsert(
       updatedEvents.map(e => ({ ...e, user_id: userId })),
       { onConflict: 'id' }
     );
+    if (error) console.error('google_events upsert failed:', error);
   };
 
   const upsertPreference = async (patch: Record<string, unknown>) => {
     if (!userId) return;
-    await supabase.from('user_preferences').upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' });
+    const { error } = await supabase
+      .from('user_preferences')
+      .upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' });
+    if (error) console.error('user_preferences upsert failed:', error);
   };
 
   const handleUpdateStudioName = (name: string) => {
@@ -204,6 +263,9 @@ export default function App() {
 
   const handleUpdateSyncEmail = (email: string) => {
     setSyncEmail(email);
+    // Persist after the user stops typing (column: user_preferences.sync_email)
+    window.clearTimeout(syncEmailTimer.current);
+    syncEmailTimer.current = window.setTimeout(() => upsertPreference({ sync_email: email }), 800);
   };
 
   const handleToggleDarkMode = (dark: boolean) => {
@@ -212,108 +274,215 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    localStorage.removeItem('lumina_google_token');
+    clearGoogleTokens();
     setGoogleAccessToken(null);
     await supabase.auth.signOut();
   };
 
-  const handleAddGoogleEvent = (event: GoogleCalendarEvent) => {
-    const updated = [event, ...googleEvents];
-    syncGoogleEventsToSupabase(updated);
+  // Token unusable and refresh failed (revoked, or granted under the old
+  // read-only scope). Clearing it makes the sync button start a fresh consent flow.
+  const handleGoogleAuthExpired = () => {
+    clearGoogleTokens();
+    setGoogleAccessToken(null);
+    showToast({
+      tone: 'error',
+      title: 'Google Calendar Disconnected',
+      message: 'Access expired or is missing write permission. Press "Re-trigger Active Sync" on the Calendar tab to reconnect.',
+    });
   };
 
-  const handleDeleteGoogleEvent = (id: string) => {
-    const updated = googleEvents.filter(e => e.id !== id);
-    syncGoogleEventsToSupabase(updated);
-    if (userId) supabase.from('google_events').delete().eq('id', id).eq('user_id', userId);
+  // Runs a Google API call, transparently refreshing the access token once
+  // when Google rejects it (tokens expire after ~1 hour).
+  const runGoogleApi = async <T,>(fn: (token: string) => Promise<T>): Promise<T> => {
+    if (!googleAccessToken) throw new GoogleAuthError('Google account not connected');
+    try {
+      return await fn(googleAccessToken);
+    } catch (err) {
+      if (!(err instanceof GoogleAuthError)) throw err;
+      const refreshed = await tryRefreshGoogleToken();
+      if (!refreshed) throw err;
+      setGoogleAccessToken(refreshed);
+      return fn(refreshed);
+    }
+  };
+
+  const handleAddGoogleEvent = async (event: GoogleCalendarEvent) => {
+    let saved = event;
+    let authExpired = false;
+    try {
+      const googleId = await runGoogleApi(token => createGoogleCalendarEvent(token, {
+        title: event.title,
+        date: event.date,
+        time: event.time,
+        description: event.description,
+      }));
+      saved = { ...event, id: googleId };
+    } catch (err) {
+      // Keep the block locally either way so the user's input isn't lost
+      if (err instanceof GoogleAuthError) authExpired = true;
+      else console.error('Google event create failed, saving locally only:', err);
+    }
+    await syncGoogleEventsToSupabase([saved, ...googleEvents]);
+    if (authExpired) handleGoogleAuthExpired();
+    else if (saved.id !== event.id) {
+      showToast({ tone: 'success', title: 'Date Blocked on Google', message: `"${event.title}" was added to your Google Calendar.` });
+    }
+  };
+
+  const handleDeleteGoogleEvent = async (id: string) => {
+    // Events that exist on Google must be deleted there first,
+    // otherwise the next sync just re-imports them.
+    if (!isLocalOnlyEvent(id)) {
+      try {
+        await runGoogleApi(token => deleteGoogleCalendarEvent(token, id));
+      } catch (err) {
+        if (err instanceof GoogleAuthError) {
+          handleGoogleAuthExpired();
+        } else {
+          console.error('Google event delete failed:', err);
+          showToast({ tone: 'error', title: 'Delete Failed', message: 'Could not delete this event from Google Calendar. Please try again.' });
+        }
+        return;
+      }
+    }
+
+    setGoogleEvents(prev => prev.filter(e => e.id !== id));
+    if (userId) {
+      const { error } = await supabase.from('google_events').delete().eq('id', id).eq('user_id', userId);
+      if (error) console.error('google_events delete failed:', error);
+    }
   };
 
   const handleTriggerSyncRefresh = async () => {
     if (!googleAccessToken) {
-      // Token lost after page refresh — need user to re-authenticate
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-          redirectTo: window.location.origin,
-          queryParams: { prompt: 'consent', access_type: 'offline' },
-        },
-      });
+      // Token lost or never granted — run the (native-safe) consent flow
+      const errMsg = await signInWithGoogle();
+      if (errMsg) console.error('Google sign-in failed:', errMsg);
       return;
     }
 
     setIsSyncing(true);
     try {
-      // Fetch next 50 events from the user's primary Google Calendar
-      const now = new Date().toISOString();
-      const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=50&orderBy=startTime&singleEvents=true&timeMin=${encodeURIComponent(now)}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${googleAccessToken}` },
-      });
+      const fetched = await runGoogleApi(token => listGoogleCalendarEvents(token));
+      // Wedding bookings we pushed to Google come back in the feed —
+      // hide them so each wedding isn't shown twice on the calendar
+      const weddingEventIds = new Set(weddings.map(w => w.googleEventId).filter(Boolean));
+      const external = fetched.filter(e => !weddingEventIds.has(e.id));
+      // Keep manual local-only blocks; everything else mirrors Google
+      const localBlocks = googleEvents.filter(e => isLocalOnlyEvent(e.id));
+      const merged = [...external, ...localBlocks];
+      setGoogleEvents(merged);
 
-      if (res.status === 401) {
-        // Token expired — clear it and ask user to reconnect
-        localStorage.removeItem('lumina_google_token');
-        setGoogleAccessToken(null);
-        setIsSyncing(false);
-        return;
+      if (userId) {
+        // Drop synced rows that no longer exist on Google, then mirror the fresh list
+        const { error: delError } = await supabase
+          .from('google_events')
+          .delete()
+          .eq('user_id', userId)
+          .not('id', 'like', 'g-custom-%');
+        if (delError) console.error('google_events reconcile delete failed:', delError);
+
+        const { error: upError } = await supabase.from('google_events').upsert(
+          merged.map(e => ({ ...e, user_id: userId })),
+          { onConflict: 'id' }
+        );
+        if (upError) console.error('google_events upsert failed:', upError);
       }
 
-      if (!res.ok) throw new Error(`Calendar API error: ${res.status}`);
-
-      const data = await res.json();
-      const fetched: GoogleCalendarEvent[] = (data.items ?? []).map((item: any) => ({
-        id: item.id,
-        title: item.summary ?? '(No title)',
-        date: (item.start?.date ?? item.start?.dateTime ?? '').slice(0, 10),
-        time: item.start?.dateTime
-          ? new Date(item.start.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : 'All Day',
-        duration: item.end?.dateTime && item.start?.dateTime
-          ? `${Math.round((new Date(item.end.dateTime).getTime() - new Date(item.start.dateTime).getTime()) / 60000)} min`
-          : 'All Day',
-        description: item.description ?? '',
-        calendarName: 'Primary',
-      }));
-
-      await syncGoogleEventsToSupabase(fetched);
       setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
-      console.error('Calendar sync failed:', err);
+      if (err instanceof GoogleAuthError) handleGoogleAuthExpired();
+      else console.error('Calendar sync failed:', err);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const handleAddWedding = (wedding: Wedding) => {
-    const updated = [wedding, ...weddings];
-    syncToSupabase(updated);
+  const handleAddWedding = async (wedding: Wedding) => {
+    // Push the booking to Google Calendar; never block the local save on it
+    let saved = wedding;
+    try {
+      const googleId = await runGoogleApi(token => createGoogleCalendarEvent(token, weddingToEventInput(wedding)));
+      saved = { ...wedding, googleEventId: googleId };
+    } catch (err) {
+      if (err instanceof GoogleAuthError) console.warn('Google not connected — wedding saved locally only');
+      else console.error('Could not create wedding on Google Calendar:', err);
+    }
+
+    syncToSupabase([saved, ...weddings]);
     setSelectedTab('weddings');
     setPreselectedFormDate('');
-    setShowNotificationAlert(true);
-    setTimeout(() => setShowNotificationAlert(false), 4500);
+    showToast({
+      tone: 'success',
+      title: 'Wedding Saved Successfully',
+      message: saved.googleEventId
+        ? 'The booking was also added to your Google Calendar. Open the weddings tab for board details.'
+        : 'Saved to your studio workspace. Connect Google on the Calendar tab to mirror bookings there too.',
+    });
   };
 
-  const handleDeleteWedding = (id: string) => {
-    const updated = weddings.filter((w) => w.id !== id);
-    syncToSupabase(updated);
-    if (userId) supabase.from('weddings').delete().eq('id', id).eq('user_id', userId);
-  };
+  const handleDeleteWedding = async (id: string) => {
+    const target = weddings.find(w => w.id === id);
+    setWeddings(prev => prev.filter((w) => w.id !== id));
 
-  const handleUpdateWedding = (updatedWedding: Wedding) => {
-    const updated = weddings.map((w) => w.id === updatedWedding.id ? updatedWedding : w);
-    syncToSupabase(updated);
-    setSelectedWedding(updatedWedding);
-  };
+    // Best effort: also remove the mirrored Google Calendar event
+    if (target?.googleEventId) {
+      try {
+        await runGoogleApi(token => deleteGoogleCalendarEvent(token, target.googleEventId!));
+      } catch (err) {
+        console.error('Google wedding event delete failed:', err);
+      }
+    }
 
-  const handleResetData = () => {
     if (!userId) return;
-    supabase.from('weddings').delete().eq('user_id', userId);
-    supabase.from('google_events').delete().eq('user_id', userId);
-    supabase.from('user_preferences').delete().eq('user_id', userId);
+    const { error } = await supabase.from('weddings').delete().eq('id', id).eq('user_id', userId);
+    if (error) console.error('weddings delete failed:', error);
+  };
+
+  const handleUpdateWedding = async (updatedWedding: Wedding) => {
+    const previous = weddings.find(w => w.id === updatedWedding.id);
+    syncToSupabase(weddings.map((w) => w.id === updatedWedding.id ? updatedWedding : w));
+    setSelectedWedding(updatedWedding);
+
+    // Only ping Google when something it displays actually changed
+    const googleVisibleChange = previous && (
+      previous.date !== updatedWedding.date ||
+      previous.time !== updatedWedding.time ||
+      previous.location !== updatedWedding.location ||
+      previous.brideName !== updatedWedding.brideName ||
+      previous.groomName !== updatedWedding.groomName
+    );
+    if (updatedWedding.googleEventId && googleVisibleChange) {
+      try {
+        await runGoogleApi(token => updateGoogleCalendarEvent(token, updatedWedding.googleEventId!, weddingToEventInput(updatedWedding)));
+      } catch (err) {
+        console.error('Google wedding event update failed:', err);
+      }
+    }
+  };
+
+  const handleResetData = async () => {
+    if (!userId) return;
+    const results = await Promise.all([
+      supabase.from('weddings').delete().eq('user_id', userId),
+      supabase.from('google_events').delete().eq('user_id', userId),
+      supabase.from('user_preferences').delete().eq('user_id', userId),
+    ]);
+    results.forEach(({ error }) => { if (error) console.error('reset delete failed:', error); });
     localStorage.removeItem('lumina_dark_mode');
-    setWeddings(INITIAL_WEDDINGS);
-    setGoogleEvents(INITIAL_GOOGLE_EVENTS);
+
+    // Re-seed fresh demo data (in the DB too, so it survives a refresh)
+    const demoWeddings = buildDemoWeddings();
+    const demoEvents = buildDemoGoogleEvents();
+    const [wRes, gRes] = await Promise.all([
+      supabase.from('weddings').insert(demoWeddings.map(w => ({ ...w, user_id: userId }))),
+      supabase.from('google_events').insert(demoEvents.map(e => ({ ...e, user_id: userId }))),
+    ]);
+    if (wRes.error) console.error('demo weddings seed:', wRes.error);
+    if (gRes.error) console.error('demo google_events seed:', gRes.error);
+
+    setWeddings(demoWeddings);
+    setGoogleEvents(demoEvents);
     setSyncActive(true);
     setStudioName('Lumina Wedding Studio');
   };
@@ -325,8 +494,15 @@ export default function App() {
 
   // Auth guard
   if (session === undefined) {
-    // Still loading session — show nothing to avoid flash
-    return <div className="min-h-screen bg-slate-50 dark:bg-zinc-950" />;
+    // Still resolving the stored session — show a branded splash instead of a blank flash
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center justify-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg animate-pulse">
+          <Heart className="w-7 h-7 text-white" />
+        </div>
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   if (session === null) {
@@ -370,24 +546,30 @@ export default function App() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleToggleDarkMode(!isDarkMode)}
-              className="p-2 rounded-full border border-zinc-150 dark:border-zinc-800 text-primary dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-850 active:scale-95 transition-all cursor-pointer"
+              className="p-2 rounded-full border border-zinc-200 dark:border-zinc-800 text-primary dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
               aria-label="Toggle dark mode"
             >
               {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             <button
               onClick={handleSignOut}
-              className="p-2 rounded-full border border-zinc-150 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-850 hover:text-red-500 dark:hover:text-red-400 active:scale-95 transition-all cursor-pointer"
+              className="p-2 rounded-full border border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-red-500 dark:hover:text-red-400 active:scale-95 transition-all cursor-pointer"
               aria-label="Sign out"
               title="Sign out"
             >
               <LogOut className="w-5 h-5" />
             </button>
-            <button 
+            <button
               onClick={() => {
-                alert('Opening system notifications panel. Everything is perfectly synchronized.');
+                const today = new Date().toISOString().split('T')[0];
+                const upcoming = weddings.filter(w => w.date >= today).length;
+                showToast({
+                  tone: 'info',
+                  title: 'Studio Status',
+                  message: `${upcoming} upcoming ${upcoming === 1 ? 'wedding' : 'weddings'} on the books${lastSyncedAt ? ` • Google feed synced at ${lastSyncedAt}` : ' • Google feed not synced yet this session'}.`,
+                });
               }}
-              className="p-2 rounded-full border border-zinc-150 dark:border-zinc-800 text-primary dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-850 active:scale-95 transition-all text-center relative cursor-pointer font-semibold"
+              className="p-2 rounded-full border border-zinc-200 dark:border-zinc-800 text-primary dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 active:scale-95 transition-all text-center relative cursor-pointer font-semibold"
             >
               <Bell className="w-5 h-5" />
               <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-primary rounded-full border-2 border-white dark:border-zinc-950"></span>
@@ -441,8 +623,10 @@ export default function App() {
           )}
 
           {selectedTab === 'new-wedding' && (
-            <NewWeddingFormView 
+            <NewWeddingFormView
               initialDate={preselectedFormDate}
+              weddings={weddings}
+              googleEvents={googleEvents}
               onAddWedding={handleAddWedding}
               onCancel={() => setSelectedTab('weddings')}
             />
@@ -472,23 +656,34 @@ export default function App() {
         </button>
       )}
 
-      {/* Sticky popup notification box */}
-      {showNotificationAlert && (
-        <div className="fixed bottom-24 left-6 z-100 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-xl shadow-xl max-w-sm flex items-start gap-3 animate-slide-up bg-opacity-95 backdrop-blur-md">
-          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <Check className="w-4 h-4" />
+      {/* Sticky toast notification box */}
+      {toast && (
+        <div className="fixed bottom-24 left-6 z-100 bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 p-4 rounded-xl shadow-xl max-w-sm flex items-start gap-3 animate-slide-up backdrop-blur-md">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+            toast.tone === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+              : toast.tone === 'error'
+                ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400'
+                : 'bg-primary/10 text-primary dark:text-zinc-200'
+          }`}>
+            {toast.tone === 'success' ? <Check className="w-4 h-4" /> : toast.tone === 'error' ? <AlertCircle className="w-4 h-4" /> : <Info className="w-4 h-4" />}
           </div>
-          <div>
-            <p className="text-sm font-bold text-on-surface dark:text-zinc-100 leading-tight">Wedding Saved Successfully</p>
-            <p className="text-xs text-zinc-400 mt-1">
-              Check out the weddings tab to access customer board details or call the Smart Assistant!
-            </p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-on-surface dark:text-zinc-100 leading-tight">{toast.title}</p>
+            <p className="text-xs text-zinc-400 mt-1">{toast.message}</p>
           </div>
+          <button
+            onClick={() => setToast(null)}
+            className="text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 text-xs font-bold cursor-pointer shrink-0"
+            aria-label="Dismiss notification"
+          >
+            ✕
+          </button>
         </div>
       )}
 
       {/* Bottom Nav Bar Shell */}
-      <nav className="fixed bottom-0 left-0 w-full h-20 flex justify-around items-center px-6 pb-safe bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800 shadow-[0px_-4px_20px_rgba(0,0,0,0.02)] z-40 rounded-t-2xl max-w-[1440px] mx-auto left-1/2 -smart-translate-x-1/2 sm:w-[500px] sm:rounded-2xl sm:bottom-4 sm:border sm:shadow-lg lg:w-[600px] -translate-x-1/2">
+      <nav className="fixed bottom-0 left-0 w-full h-20 flex justify-around items-center px-6 pb-safe bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800 shadow-[0px_-4px_20px_rgba(0,0,0,0.02)] z-40 rounded-t-2xl max-w-[1440px] mx-auto left-1/2 sm:w-[500px] sm:rounded-2xl sm:bottom-4 sm:border sm:shadow-lg lg:w-[600px] -translate-x-1/2">
         
         {/* Tab 1: Home */}
         <button 
@@ -496,7 +691,7 @@ export default function App() {
           className={`flex flex-col items-center justify-center px-4 py-1 rounded-xl transition-all duration-150 cursor-pointer ${
             selectedTab === 'home' 
               ? 'bg-primary/20 text-primary dark:text-white font-bold scale-105 shadow-sm' 
-              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-650 dark:hover:text-zinc-300'
+              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
           }`}
         >
           <Home className="w-5 h-5" />
@@ -509,7 +704,7 @@ export default function App() {
           className={`flex flex-col items-center justify-center px-4 py-1 rounded-xl transition-all duration-150 cursor-pointer ${
             selectedTab === 'calendar' 
               ? 'bg-primary/20 text-primary dark:text-white font-bold scale-105 shadow-sm' 
-              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-650 dark:hover:text-zinc-300'
+              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
           }`}
         >
           <CalendarIcon className="w-5 h-5" />
@@ -522,7 +717,7 @@ export default function App() {
           className={`flex flex-col items-center justify-center px-4 py-1 rounded-xl transition-all duration-150 cursor-pointer ${
             selectedTab === 'weddings' 
               ? 'bg-primary/20 text-primary dark:text-white font-bold scale-105 shadow-sm' 
-              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-650 dark:hover:text-zinc-300'
+              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
           }`}
         >
           <Award className="w-5 h-5" />
@@ -535,7 +730,7 @@ export default function App() {
           className={`flex flex-col items-center justify-center px-4 py-1 rounded-xl transition-all duration-150 cursor-pointer ${
             selectedTab === 'settings' 
               ? 'bg-primary/20 text-primary dark:text-white font-bold scale-105 shadow-sm' 
-              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-650 dark:hover:text-zinc-300'
+              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'
           }`}
         >
           <SettingsIcon className="w-5 h-5" />

@@ -8,16 +8,18 @@ import {
   User, Calendar, Clock, MapPin, Award, CheckCircle2, ShieldAlert, FileText, 
   Upload, Sparkles, DollarSign, Camera, Video, Church, BookOpen, AlertCircle
 } from 'lucide-react';
-import { Wedding, WeddingStatus } from '../types';
+import { Wedding, WeddingStatus, GoogleCalendarEvent } from '../types';
 import { SERVICE_PRICES } from '../data';
 
 interface NewWeddingFormViewProps {
   initialDate?: string;
+  weddings: Wedding[];
+  googleEvents: GoogleCalendarEvent[];
   onAddWedding: (wedding: Wedding) => void;
   onCancel: () => void;
 }
 
-export default function NewWeddingFormView({ initialDate = '', onAddWedding, onCancel }: NewWeddingFormViewProps) {
+export default function NewWeddingFormView({ initialDate = '', weddings, googleEvents, onAddWedding, onCancel }: NewWeddingFormViewProps) {
   const [groomName, setGroomName] = useState('');
   const [brideName, setBrideName] = useState('');
   const [date, setDate] = useState(initialDate);
@@ -57,6 +59,11 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
   useEffect(() => {
     setRemainingPaid(Math.max(0, estimatedTotal - advancePaid));
   }, [estimatedTotal, advancePaid]);
+
+  // Real availability check against existing bookings and the synced Google feed
+  const conflictingWeddings = date ? weddings.filter(w => w.date === date) : [];
+  const conflictingGoogleEvents = date ? googleEvents.filter(e => e.date === date) : [];
+  const hasConflicts = conflictingWeddings.length > 0 || conflictingGoogleEvents.length > 0;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -138,7 +145,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
       <div className="lg:col-span-8 space-y-6">
         
         {/* Card 1: General Info */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-100 dark:border-zinc-805 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-5">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-100 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-5">
           <div className="flex items-center gap-2.5 border-b border-zinc-100 dark:border-zinc-800 pb-3">
             <User className="text-primary w-5 h-5" />
             <h3 className="font-headline font-bold text-on-surface dark:text-zinc-200 text-base">
@@ -233,7 +240,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
         </div>
 
         {/* Card 2: Services / Checkboxes */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-100 dark:border-zinc-805 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-5">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-100 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-5">
           <div className="flex items-center gap-2.5 border-b border-zinc-100 dark:border-zinc-800 pb-3">
             <Camera className="text-primary w-5 h-5" />
             <h3 className="font-headline font-bold text-on-surface dark:text-zinc-200 text-base">
@@ -247,7 +254,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
               className={`group relative flex items-center p-4 rounded-xl border cursor-pointer select-none transition-all ${
                 photography 
                   ? 'border-primary bg-primary/5' 
-                  : 'border-zinc-150 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 hover:border-zinc-300'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 hover:border-zinc-300'
               }`}
             >
               <input 
@@ -260,7 +267,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
                 <span className="text-sm font-semibold text-on-surface dark:text-zinc-100">Photography Package</span>
                 <span className="text-[10px] text-zinc-400">Full day coverage + High resolution prints (${SERVICE_PRICES['Photography']})</span>
               </div>
-              <Camera className="absolute right-4 text-primary opacity-20 group-hover:opacity-105 transition-opacity w-5 h-5" />
+              <Camera className="absolute right-4 text-primary opacity-20 group-hover:opacity-100 transition-opacity w-5 h-5" />
             </label>
 
             {/* Box 2 */}
@@ -268,7 +275,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
               className={`group relative flex items-center p-4 rounded-xl border cursor-pointer select-none transition-all ${
                 cinematography 
                   ? 'border-primary bg-primary/5' 
-                  : 'border-zinc-150 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-905/40 hover:border-zinc-300'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 hover:border-zinc-300'
               }`}
             >
               <input 
@@ -281,7 +288,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
                 <span className="text-sm font-semibold text-on-surface dark:text-zinc-100">Cinematography Package</span>
                 <span className="text-[10px] text-zinc-400">4K Cinematic video + drone coverage (${SERVICE_PRICES['Cinematography']})</span>
               </div>
-              <Video className="absolute right-4 text-primary opacity-20 group-hover:opacity-105 transition-opacity w-5 h-5" />
+              <Video className="absolute right-4 text-primary opacity-20 group-hover:opacity-100 transition-opacity w-5 h-5" />
             </label>
 
             {/* Box 3 */}
@@ -289,7 +296,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
               className={`group relative flex items-center p-4 rounded-xl border cursor-pointer select-none transition-all ${
                 civilCeremony 
                   ? 'border-primary bg-primary/5' 
-                  : 'border-zinc-150 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-905/40 hover:border-zinc-300'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 hover:border-zinc-300'
               }`}
             >
               <input 
@@ -302,13 +309,16 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
                 <span className="text-sm font-semibold text-on-surface dark:text-zinc-100">Civil Ceremony Union</span>
                 <span className="text-[10px] text-zinc-400">Separate registry date coverage (${SERVICE_PRICES['Civil Ceremony']})</span>
               </div>
-              <Church className="absolute right-4 text-primary opacity-20 group-hover:opacity-105 transition-opacity w-5 h-5" />
+              <Church className="absolute right-4 text-primary opacity-20 group-hover:opacity-100 transition-opacity w-5 h-5" />
             </label>
 
             {/* Box 4 */}
-            <label 
+            <label
               className={`group relative flex items-center p-4 rounded-xl border cursor-pointer select-none transition-all ${
-                weddingAlbum} ` + (weddingAlbum ? 'border-primary bg-primary/5' : 'border-zinc-150 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-905/40 hover:border-zinc-300')}
+                weddingAlbum
+                  ? 'border-primary bg-primary/5'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 hover:border-zinc-300'
+              }`}
             >
               <input 
                 type="checkbox"
@@ -320,13 +330,13 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
                 <span className="text-sm font-semibold text-on-surface dark:text-zinc-100">Premium Leather Wedding Album</span>
                 <span className="text-[10px] text-zinc-400">Premium hardback linen prints (${SERVICE_PRICES['Wedding Album']})</span>
               </div>
-              <BookOpen className="absolute right-4 text-primary opacity-20 group-hover:opacity-105 transition-opacity w-5 h-5" />
+              <BookOpen className="absolute right-4 text-primary opacity-20 group-hover:opacity-100 transition-opacity w-5 h-5" />
             </label>
           </div>
         </div>
 
         {/* Section 3: Document Uploads & Pay fields */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-105 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-5">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-100 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-5">
           <div className="flex items-center gap-2.5 border-b border-zinc-100 dark:border-zinc-800 pb-3 font-bold text-sm text-on-surface dark:text-zinc-100">
             <DollarSign className="w-5 h-5 text-primary" />
             <h3 className="font-headline text-base">
@@ -375,7 +385,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
                     placeholder="0.00"
                     value={advancePaid === 0 ? '' : advancePaid}
                     onChange={(e) => setAdvancePaid(Number(e.target.value))}
-                    className="w-full bg-surface-container-low dark:bg-zinc-850 border border-outline-variant rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm text-on-surface dark:text-zinc-100"
+                    className="w-full bg-surface-container-low dark:bg-zinc-800 border border-outline-variant rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm text-on-surface dark:text-zinc-100"
                   />
                 </div>
               </div>
@@ -400,7 +410,7 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
         </div>
 
         {/* Custom Timeline Notes prompt section */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-105 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-3">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-zinc-100 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] space-y-3">
           <label className="text-[10px] font-headline font-bold uppercase tracking-wider text-on-surface-variant dark:text-zinc-400">
             Special Coordination Notes / Custom AI Prompt Rules
           </label>
@@ -440,29 +450,76 @@ export default function NewWeddingFormView({ initialDate = '', onAddWedding, onC
           <div className="absolute right-0 bottom-0 top-0 w-24 bg-[linear-gradient(135deg,_transparent_30%,_rgba(255,255,255,0.06))] pointer-events-none rounded-r-2xl"></div>
         </div>
 
-        {/* Card: timeline check */}
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-5 border border-zinc-100 dark:border-zinc-805 shadow-[0px_4px_20px_rgba(0,0,0,0.02)]">
-          <h4 className="font-headline text-xs font-bold text-on-surface-variant dark:text-zinc-350 uppercase mb-4 tracking-wider">
-            Timeline Conflict Check
+        {/* Card: availability check (live against bookings + Google feed) */}
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-5 border border-zinc-100 dark:border-zinc-800 shadow-[0px_4px_20px_rgba(0,0,0,0.02)]">
+          <h4 className="font-headline text-xs font-bold text-on-surface-variant dark:text-zinc-400 uppercase mb-4 tracking-wider">
+            Date Availability Check
           </h4>
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-900/20 flex items-center justify-center text-teal-600 shrink-0">
-              <CheckCircle2 className="w-5 h-5 animate-pulse" />
+          {!date ? (
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold leading-tight text-on-surface dark:text-zinc-100">
+                  Pick a Wedding Date
+                </p>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  Availability is checked against your bookings and synced Google Calendar.
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold leading-tight text-on-surface dark:text-zinc-100">
-                No Calendar Conflicts Detected
-              </p>
-              <p className="text-[11px] text-zinc-400 mt-1">
-                Target date is fully vacant in your synced Google Calendar schedules.
-              </p>
+          ) : hasConflicts ? (
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-600 shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold leading-tight text-on-surface dark:text-zinc-100">
+                    Schedule Overlap on {date}
+                  </p>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    {conflictingWeddings.length > 0 && `${conflictingWeddings.length} wedding booking${conflictingWeddings.length > 1 ? 's' : ''}`}
+                    {conflictingWeddings.length > 0 && conflictingGoogleEvents.length > 0 && ' and '}
+                    {conflictingGoogleEvents.length > 0 && `${conflictingGoogleEvents.length} Google Calendar commitment${conflictingGoogleEvents.length > 1 ? 's' : ''}`}
+                    {' '}already on this date.
+                  </p>
+                </div>
+              </div>
+              <ul className="space-y-1.5 pl-1">
+                {conflictingWeddings.map(w => (
+                  <li key={w.id} className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 truncate">
+                    💍 {w.brideName} &amp; {w.groomName} — {w.time}
+                  </li>
+                ))}
+                {conflictingGoogleEvents.map(e => (
+                  <li key={e.id} className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 truncate">
+                    🗓️ {e.title} — {e.time}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-900/20 flex items-center justify-center text-teal-600 shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold leading-tight text-on-surface dark:text-zinc-100">
+                  {date} is Available
+                </p>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  No bookings or synced Google Calendar commitments found on this date.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Actions */}
-      <div className="lg:col-span-12 border-t border-zinc-150 dark:border-zinc-800 pt-6 flex flex-col sm:flex-row items-center justify-end gap-3.5">
+      <div className="lg:col-span-12 border-t border-zinc-200 dark:border-zinc-800 pt-6 flex flex-col sm:flex-row items-center justify-end gap-3.5">
         <button 
           type="button"
           onClick={onCancel}

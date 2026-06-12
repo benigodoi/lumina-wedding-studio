@@ -21,8 +21,12 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  // Quick Overview states
-  const totalThisMonthCount = weddings.filter(w => w.date.includes('-06-')).length; // June Overview
+  // Quick Overview stats for the current month
+  const now = new Date();
+  const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-`;
+  const currentMonthName = now.toLocaleString('default', { month: 'long' });
+  const totalThisMonthCount = weddings.filter(w => w.date.startsWith(currentMonthPrefix)).length;
+  const pendingEditCount = weddings.filter(w => w.status === 'Pending Edit').length;
 
   // Filter weddings
   const filteredWeddings = weddings.filter((w) => {
@@ -37,15 +41,18 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
     return matchesSearch && matchesFilter;
   });
 
-  // Featured wedding - find first Confirmed wedding
-  const featuredWedding = weddings.find(w => w.status === 'Confirmed' && (w.groomName === 'Ion' || w.groomName === 'Andrei')) || weddings[0];
+  // Featured wedding — the next upcoming booking (falls back to the first entry)
+  const today = now.toISOString().split('T')[0];
+  const featuredWedding = [...weddings]
+    .filter(w => w.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0] || weddings[0];
 
   const statusColors = {
-    'Confirmed': 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-350',
-    'Pending Deposit': 'bg-orange-100 text-orange-900 dark:bg-orange-950/40 dark:text-orange-350',
-    'Signed': 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-355',
-    'Final Prep': 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-355',
-    'Pending Edit': 'bg-indigo-100 text-indigo-850 dark:bg-indigo-950/40 dark:text-indigo-350'
+    'Confirmed': 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300',
+    'Pending Deposit': 'bg-orange-100 text-orange-900 dark:bg-orange-950/40 dark:text-orange-300',
+    'Signed': 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+    'Final Prep': 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
+    'Pending Edit': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300'
   };
 
   const toggleActionsMenu = (id: string, e: React.MouseEvent) => {
@@ -88,7 +95,7 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
               placeholder="Search couples..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white dark:bg-zinc-900 border border-outline-variant rounded-xl text-xs font-semibold focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-on-surface"
+              className="w-full pl-9 pr-4 py-2 bg-white dark:bg-zinc-900 border border-outline-variant rounded-xl text-xs font-semibold focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-on-surface dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
             />
           </div>
 
@@ -96,7 +103,7 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-white dark:bg-zinc-900 border border-outline-variant text-xs font-semibold px-4 py-2 rounded-xl text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary appearance-none cursor-pointer pr-8"
+              className="bg-white dark:bg-zinc-900 border border-outline-variant text-xs font-semibold px-4 py-2 rounded-xl text-on-surface dark:text-zinc-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary appearance-none cursor-pointer pr-8"
             >
               <option value="All">All Statuses</option>
               <option value="Confirmed">Confirmed</option>
@@ -115,7 +122,7 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
         {statusFilter === 'All' && searchQuery === '' && featuredWedding && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Bento Part 1: Featured Card */}
-            <div className="lg:col-span-8 bg-white dark:bg-zinc-900 rounded-2xl shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-zinc-100 dark:border-zinc-850 overflow-hidden group hover:shadow-md transition-all duration-300">
+            <div className="lg:col-span-8 bg-white dark:bg-zinc-900 rounded-2xl shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-zinc-100 dark:border-zinc-800 overflow-hidden group hover:shadow-md transition-all duration-300">
               <div className="grid grid-cols-1 md:grid-cols-12">
                 <div className="md:col-span-6 h-52 md:h-full relative overflow-hidden bg-zinc-100 min-h-[220px]">
                   <img 
@@ -174,16 +181,17 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
               <div className="bg-primary text-white p-6 rounded-2xl relative overflow-hidden flex-1 shadow-md">
                 <div className="relative z-10 space-y-2">
                   <Sparkles className="w-8 h-8 opacity-40 animate-pulse" />
-                  <h4 className="font-headline font-extrabold text-lg">June Overview</h4>
+                  <h4 className="font-headline font-extrabold text-lg">{currentMonthName} Overview</h4>
                   <p className="text-xs text-white/85 leading-relaxed">
-                    <strong>{totalThisMonthCount} Weddings</strong> scheduled this month.<br />3 gallery photo deliveries pending edits.
+                    <strong>{totalThisMonthCount} {totalThisMonthCount === 1 ? 'Wedding' : 'Weddings'}</strong> scheduled this month.<br />
+                    {pendingEditCount} gallery {pendingEditCount === 1 ? 'delivery' : 'deliveries'} pending edits.
                   </p>
                 </div>
                 <div className="absolute right-0 bottom-0 top-0 w-32 bg-[linear-gradient(135deg,_transparent_40%,_rgba(255,255,255,0.06))] pointer-events-none rounded-r-2xl"></div>
               </div>
 
               {/* Quick actions box */}
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-850 p-6 rounded-2xl flex-1 shadow-[0px_4px_20px_rgba(0,0,0,0.02)]">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-6 rounded-2xl flex-1 shadow-[0px_4px_20px_rgba(0,0,0,0.02)]">
                 <h4 className="font-headline font-bold text-xs uppercase tracking-wider text-on-surface-variant dark:text-zinc-400 mb-4 bg-zinc-50 dark:bg-zinc-800/60 p-2 rounded-lg inline-block">
                   Quick Actions
                 </h4>
@@ -193,14 +201,14 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
                     className="flex flex-col items-center justify-center p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 hover:border-primary/40 rounded-xl gap-1.5 transition-all text-center select-none"
                   >
                     <FileText className="w-5 h-5 text-primary" />
-                    <span className="text-[10px] font-headline font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-350">Contracts</span>
+                    <span className="text-[10px] font-headline font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-400">Contracts</span>
                   </button>
                   <button 
                     onClick={() => alert('Accessing secure invoicing tracker')}
                     className="flex flex-col items-center justify-center p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 hover:border-primary/40 rounded-xl gap-1.5 transition-all text-center select-none"
                   >
                     <DollarSign className="w-5 h-5 text-primary" />
-                    <span className="text-[10px] font-headline font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-350">Invoices</span>
+                    <span className="text-[10px] font-headline font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-400">Invoices</span>
                   </button>
                 </div>
               </div>
@@ -218,7 +226,7 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
               <div 
                 key={wedding.id}
                 onClick={() => onSelectWedding(wedding)}
-                className="bg-white dark:bg-zinc-900 border border-zinc-105 dark:border-zinc-800 rounded-2xl p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] hover:-translate-y-1 hover:shadow-md transition-all duration-300 relative group cursor-pointer"
+                className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.02)] hover:-translate-y-1 hover:shadow-md transition-all duration-300 relative group cursor-pointer"
               >
                 {/* Status and Icon */}
                 <div className="flex justify-between items-start mb-5">
@@ -254,13 +262,13 @@ export default function WeddingsListView({ weddings, onSelectWedding, onDeleteWe
                   <div className="relative">
                     <button 
                       onClick={(e) => toggleActionsMenu(wedding.id, e)}
-                      className="p-1.5 rounded-full hover:bg-zinc-150 dark:hover:bg-zinc-800/70 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                      className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800/70 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
                     >
                       <MoreVertical className="w-4 h-4" />
                     </button>
 
                     {activeMenuId === wedding.id && (
-                      <div className="absolute right-0 bottom-8 z-50 bg-white dark:bg-zinc-800 w-36 border border-zinc-150 dark:border-zinc-700 rounded-lg shadow-lg py-1">
+                      <div className="absolute right-0 bottom-8 z-50 bg-white dark:bg-zinc-800 w-36 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg py-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

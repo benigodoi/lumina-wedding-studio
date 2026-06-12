@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+android
+.git
+.github
+.env*
+!.env.example
+*.log
+coverage
+SESSIONS.md
+README.md

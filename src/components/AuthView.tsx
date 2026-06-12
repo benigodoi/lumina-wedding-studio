@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Heart, Sparkles, AlertCircle, Loader } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
+import { signInWithGoogle } from '../lib/googleAuth';
 
 const isNative = Capacitor.isNativePlatform();
 
@@ -14,33 +13,14 @@ export default function AuthView() {
     setIsLoading(true);
     setError(null);
 
-    const redirectTo = isNative
-      ? 'com.luminaweddingstudio.app://login-callback'
-      : window.location.origin;
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        redirectTo,
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-        skipBrowserRedirect: isNative, // we handle the redirect ourselves on native
-      },
-    });
-
-    if (error) {
-      setError(error.message);
+    const errMsg = await signInWithGoogle();
+    if (errMsg) {
+      setError(errMsg);
       setIsLoading(false);
       return;
     }
-
-    if (isNative && data.url) {
-      // Open Google sign-in in a real Chrome Custom Tab (not WebView)
-      await Browser.open({ url: data.url, windowName: '_self' });
-      setIsLoading(false);
-      return;
-    }
-    // On web, Supabase handles the redirect automatically
+    // On web, Supabase redirects the page; on native the Custom Tab is now open
+    if (isNative) setIsLoading(false);
   };
 
   return (
@@ -81,7 +61,7 @@ export default function AuthView() {
           <button
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-750 active:scale-98 transition-all font-semibold text-sm text-on-surface dark:text-zinc-100 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 active:scale-98 transition-all font-semibold text-sm text-on-surface dark:text-zinc-100 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             {isLoading ? (
               <Loader className="w-4 h-4 animate-spin text-zinc-400" />

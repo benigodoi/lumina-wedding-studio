@@ -6,6 +6,19 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-headline: "Manrope", sans-serif;
 
+  --animate-fade-in: fade-in 0.25s ease-out both;
+  --animate-slide-up: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   --color-outline-variant: #c0c7d4;
   --color-on-tertiary-container: #fafdff;
   --color-surface-container-high: #dee8ff;
@@ -53,6 +66,20 @@
   --color-on-secondary: #ffffff;
   --color-surface-container-low: #f0f3ff;
   --color-on-secondary-fixed: #001e2f;
+}
+
+/* Hide scrollbars on overflow containers while keeping them scrollable */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Respect notches / gesture bars on mobile (Android & iOS) */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 body {

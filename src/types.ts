@@ -24,6 +24,8 @@ export interface Wedding {
   notes?: string;
   email?: string;
   timeline?: TimelineEvent[];
+  /** Id of the mirrored event on the user's Google Calendar, if pushed. */
+  googleEventId?: string | null;
 }
 
 export interface GoogleCalendarEvent {

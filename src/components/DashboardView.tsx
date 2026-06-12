@@ -48,10 +48,10 @@ export default function DashboardView({
 
   const statusColors = {
     'Confirmed': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-    'Pending Deposit': 'bg-orange-100 text-orange-850 dark:bg-orange-950/30 dark:text-orange-400',
+    'Pending Deposit': 'bg-orange-100 text-orange-800 dark:bg-orange-950/30 dark:text-orange-400',
     'Signed': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
     'Final Prep': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-    'Pending Edit': 'bg-indigo-100 text-indigo-805 dark:bg-indigo-900/30 dark:text-indigo-400'
+    'Pending Edit': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400'
   };
 
   return (
@@ -103,7 +103,7 @@ export default function DashboardView({
               </div>
               <button 
                 onClick={() => onNavigateToTab('weddings')}
-                className="p-1.5 text-zinc-405 hover:text-primary transition-colors cursor-pointer"
+                className="p-1.5 text-zinc-400 hover:text-primary transition-colors cursor-pointer"
                 title="View Full List"
               >
                 <ChevronRight className="w-5 h-5" />
@@ -120,7 +120,7 @@ export default function DashboardView({
                 <div 
                   key={wedding.id}
                   onClick={() => onSelectWedding(wedding)}
-                  className="p-4 bg-zinc-50 dark:bg-zinc-800/45 rounded-xl border border-zinc-100 dark:border-zinc-800/80 hover:border-primary/45 hover:shadow-sm cursor-pointer transition-all duration-250 group"
+                  className="p-4 bg-zinc-50 dark:bg-zinc-800/45 rounded-xl border border-zinc-100 dark:border-zinc-800/80 hover:border-primary/45 hover:shadow-sm cursor-pointer transition-all duration-300 group"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div>
@@ -136,7 +136,7 @@ export default function DashboardView({
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-on-surface-variant dark:text-zinc-400">
-                    <MapPin className="w-3.5 h-3.5 text-primary dark:text-zinc-450 shrink-0" />
+                    <MapPin className="w-3.5 h-3.5 text-primary dark:text-zinc-400 shrink-0" />
                     <span className="truncate">{wedding.location}</span>
                   </div>
                 </div>
@@ -189,7 +189,7 @@ export default function DashboardView({
             </div>
 
             {/* Live Google Events Feed */}
-            <div className="relative bg-slate-50 dark:bg-zinc-800/20 rounded-2xl border border-zinc-150 dark:border-zinc-800 overflow-hidden">
+            <div className="relative bg-slate-50 dark:bg-zinc-800/20 rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
               <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary via-amber-500 to-primary"></div>
 
               {!syncActive ? (
@@ -236,7 +236,7 @@ export default function DashboardView({
 
           <button
             onClick={() => onNavigateToTab('calendar')}
-            className="w-full mt-6 bg-zinc-900 text-white dark:bg-zinc-800 hover:bg-zinc-850 dark:hover:bg-zinc-700 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+            className="w-full mt-6 bg-zinc-900 text-white dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
           >
             <Compass className="w-4 h-4" /> Open Unified Calendar &amp; Manage Sync Settings
           </button>

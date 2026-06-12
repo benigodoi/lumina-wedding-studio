@@ -7,14 +7,14 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
-import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-const PORT = 3000;
+// Cloud Run (and most PaaS hosts) inject the port to listen on via $PORT.
+const PORT = Number(process.env.PORT) || 3000;
 
 // Initialize Gemini SDK with telemetry header
 const getGeminiClient = () => {
@@ -76,6 +76,57 @@ app.post('/api/gemini/assist', async (req, res) => {
   }
 });
 
+// Exchange a Google OAuth refresh token for a fresh access token.
+// Uses the same Google OAuth client that is configured in Supabase
+// (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars).
+app.post('/api/google/refresh', async (req, res) => {
+  try {
+    const { refresh_token } = req.body || {};
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      res.status(501).json({
+        success: false,
+        error: 'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not configured on the server.',
+      });
+      return;
+    }
+    if (!refresh_token) {
+      res.status(400).json({ success: false, error: 'Missing refresh_token.' });
+      return;
+    }
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token,
+        grant_type: 'refresh_token',
+      }),
+    });
+
+    const data = await tokenRes.json();
+    if (!tokenRes.ok || !data.access_token) {
+      res.status(401).json({
+        success: false,
+        error: data.error_description || data.error || 'Token refresh rejected by Google.',
+      });
+      return;
+    }
+
+    res.json({ success: true, access_token: data.access_token, expires_in: data.expires_in });
+  } catch (error: any) {
+    console.error('Error in /api/google/refresh:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error refreshing Google token',
+    });
+  }
+});
+
 // Serve health status
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
@@ -83,15 +134,10 @@ app.get('/api/health', (req, res) => {
 
 // Vite Middleware Configuration
 async function initializeServer() {
-  if (process.env.NODE_ENV !== 'production' && process.env.DISABLE_HMR === 'true') {
-    // Development Mode with HMR disabled
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else if (process.env.NODE_ENV !== 'production') {
-    // Normal Dev mode
+  if (process.env.NODE_ENV !== 'production') {
+    // Development mode: vite is loaded lazily so the production bundle
+    // never requires it at runtime.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

@@ -166,7 +166,7 @@ export default function SettingsView({ studioName, onUpdateStudioName, onResetDa
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold dark:text-zinc-100">Enable Coordination Notification Sounds</p>
-                <p className="text-xs text-on-surface-variant dark:text-zinc-450">Alert for timeline entries and booking reminders</p>
+                <p className="text-xs text-on-surface-variant dark:text-zinc-400">Alert for timeline entries and booking reminders</p>
               </div>
               <input 
                 type="checkbox" 
@@ -179,7 +179,7 @@ export default function SettingsView({ studioName, onUpdateStudioName, onResetDa
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold dark:text-zinc-100">Active Background Google Sync on Open</p>
-                <p className="text-xs text-on-surface-variant dark:text-zinc-450">Triggers an automatic refresh cycle once the application mounts</p>
+                <p className="text-xs text-on-surface-variant dark:text-zinc-400">Triggers an automatic refresh cycle once the application mounts</p>
               </div>
               <input 
                 type="checkbox" 
@@ -192,7 +192,7 @@ export default function SettingsView({ studioName, onUpdateStudioName, onResetDa
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold dark:text-zinc-100">Lumina Assistant AI Proactive Suggestion Mode</p>
-                <p className="text-xs text-on-surface-variant dark:text-zinc-450">Enables high fidelity coordinator proposal models</p>
+                <p className="text-xs text-on-surface-variant dark:text-zinc-400">Enables high fidelity coordinator proposal models</p>
               </div>
               <input 
                 type="checkbox" 
@@ -205,7 +205,7 @@ export default function SettingsView({ studioName, onUpdateStudioName, onResetDa
         </div>
 
         {/* Buttons */}
-        <div className="flex items-center justify-between pt-4 border-t border-zinc-150 dark:border-zinc-800">
+        <div className="flex items-center justify-between pt-4 border-t border-zinc-200 dark:border-zinc-800">
           <button 
             type="button"
             onClick={handleReset}

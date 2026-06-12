@@ -168,7 +168,7 @@ export default function WeddingBoardModal({ wedding, onClose, onUpdateWedding }:
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Left Column: General Info */}
               <div className="space-y-4">
-                <div className="bg-surface-container-low dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-105 dark:border-zinc-800">
+                <div className="bg-surface-container-low dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-100 dark:border-zinc-800">
                   <h4 className="font-headline font-bold text-sm text-on-surface dark:text-zinc-200 mb-4 uppercase tracking-wider">
                     General Reference
                   </h4>
@@ -196,7 +196,7 @@ export default function WeddingBoardModal({ wedding, onClose, onUpdateWedding }:
                   </div>
                 </div>
 
-                <div className="bg-surface-container-low dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-105 dark:border-zinc-800">
+                <div className="bg-surface-container-low dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-100 dark:border-zinc-800">
                   <h4 className="font-headline font-bold text-sm text-on-surface dark:text-zinc-200 mb-2 uppercase tracking-wider">
                     Client Direct Notes
                   </h4>
@@ -208,7 +208,7 @@ export default function WeddingBoardModal({ wedding, onClose, onUpdateWedding }:
 
               {/* Right Column: Services & Payments */}
               <div className="space-y-4">
-                <div className="bg-surface-container-low dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-105 dark:border-zinc-800">
+                <div className="bg-surface-container-low dark:bg-zinc-800/40 p-5 rounded-xl border border-zinc-100 dark:border-zinc-800">
                   <h4 className="font-headline font-bold text-sm text-on-surface dark:text-zinc-200 mb-4 uppercase tracking-wider">
                     Booked Packages
                   </h4>
@@ -359,9 +359,9 @@ export default function WeddingBoardModal({ wedding, onClose, onUpdateWedding }:
               )}
 
               {aiResponse && !aiLoading && (
-                <div className="space-y-3 border border-zinc-150 dark:border-zinc-800 rounded-xl overflow-hidden bg-zinc-50 dark:bg-zinc-805">
-                  <div className="px-4 py-3 border-b border-zinc-150 dark:border-zinc-800 flex justify-between items-center bg-zinc-100 dark:bg-zinc-800">
-                    <span className="text-xs font-bold font-mono tracking-wider text-zinc-600 dark:text-zinc-350">
+                <div className="space-y-3 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-zinc-50 dark:bg-zinc-800">
+                  <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-100 dark:bg-zinc-800">
+                    <span className="text-xs font-bold font-mono tracking-wider text-zinc-600 dark:text-zinc-400">
                       GENERATED PROPOSAL ({aiAction.toUpperCase()})
                     </span>
                     <button
@@ -379,7 +379,7 @@ export default function WeddingBoardModal({ wedding, onClose, onUpdateWedding }:
                       )}
                     </button>
                   </div>
-                  <div className="p-5 text-sm leading-relaxed prose dark:prose-invert max-w-none break-words max-h-[400px] overflow-y-auto font-sans text-on-surface whitespace-pre-line bg-white dark:bg-zinc-900">
+                  <div className="p-5 text-sm leading-relaxed prose dark:prose-invert max-w-none break-words max-h-[400px] overflow-y-auto font-sans text-on-surface dark:text-zinc-100 whitespace-pre-line bg-white dark:bg-zinc-900">
                     {aiResponse}
                   </div>
                 </div>
